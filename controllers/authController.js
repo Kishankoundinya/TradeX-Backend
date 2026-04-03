@@ -23,12 +23,19 @@ const register = async (req, res) => {
             name, 
             email, 
             password: hashedPassword, 
-            currentBalance: 100000  // Make sure this field exists
+            currentBalance: 100000
         });
         await user.save();
 
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, { expiresIn: '7d' });
-        console.log('New user created with ID:', user._id);
+        // IMPORTANT: Create UNIQUE token using user's specific ID
+        const token = jwt.sign(
+            { id: user._id.toString() },
+            process.env.JWT_SECRET_KEY, 
+            { expiresIn: '7d' }
+        );
+        
+        console.log('✅ New user created with ID:', user._id.toString());
+        console.log('✅ Token created for user ID:', user._id.toString());
 
         const isProduction = process.env.NODE_ENV === 'production';
         
@@ -76,15 +83,21 @@ const login = async (req, res) => {
             return res.json({ success: false, message: 'Invalid Email' });
         }
 
-        console.log('User found:', user._id, user.email);
+        console.log('User found:', user._id.toString(), user.email);
 
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.json({ success: false, message: 'Invalid email id or password' });
         }
         
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, { expiresIn: '7d' });
-        console.log('Token created for user ID:', user._id);
+        // IMPORTANT: Create UNIQUE token using this user's specific ID
+        const token = jwt.sign(
+            { id: user._id.toString() },
+            process.env.JWT_SECRET_KEY, 
+            { expiresIn: '7d' }
+        );
+        
+        console.log('✅ Token created for user ID:', user._id.toString());
 
         const isProduction = process.env.NODE_ENV === 'production';
         
