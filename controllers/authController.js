@@ -20,19 +20,17 @@ const register = async (req, res) => {
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, { expiresIn: '7d' });
 
-        // FORCED CROSS-SITE COOKIE SETTINGS FOR PRODUCTION
         const isProduction = process.env.NODE_ENV === 'production';
         
         res.cookie('token', token, {
             httpOnly: true,
-            secure: true,  // Force true for cross-site
-            sameSite: 'none',  // Force 'none' for cross-site
+            secure: true,
+            sameSite: 'none',
             maxAge: 7 * 24 * 60 * 60 * 1000,
             path: '/',
-            domain: isProduction ? '.onrender.com' : undefined  // Add domain only in production
+            domain: isProduction ? '.onrender.com' : undefined
         });
 
-        // Log cookie settings
         console.log('✅ Registration - Cookie set with:', {
             secure: true,
             sameSite: 'none',
@@ -50,7 +48,6 @@ const register = async (req, res) => {
 
         await transporter.sendMail(mailOptions);
 
-        // Send user data back
         const userData = {
             _id: user._id,
             name: user.name,
@@ -59,7 +56,11 @@ const register = async (req, res) => {
             isAccountVerified: user.isAccountVerified || false
         };
 
-        return res.json({ success: true, userData: userData });
+        return res.json({ 
+            success: true, 
+            userData: userData,
+            token: token
+        });
     }
     catch (e) {
         console.error('❌ Registration error:', e.message);
@@ -86,19 +87,17 @@ const login = async (req, res) => {
         
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, { expiresIn: '7d' });
 
-        // FORCED CROSS-SITE COOKIE SETTINGS FOR PRODUCTION
         const isProduction = process.env.NODE_ENV === 'production';
         
         res.cookie('token', token, {
             httpOnly: true,
-            secure: true,  // Force true for cross-site
-            sameSite: 'none',  // Force 'none' for cross-site
+            secure: true,
+            sameSite: 'none',
             maxAge: 7 * 24 * 60 * 60 * 1000,
             path: '/',
-            domain: isProduction ? '.onrender.com' : undefined  // Add domain only in production
+            domain: isProduction ? '.onrender.com' : undefined
         });
         
-        // Log cookie settings
         console.log('✅ Login successful for:', email);
         console.log('🍪 Cookie set with:', {
             secure: true,
@@ -107,7 +106,6 @@ const login = async (req, res) => {
             environment: process.env.NODE_ENV
         });
         
-        // Send user data back
         const userData = {
             _id: user._id,
             name: user.name,
@@ -116,7 +114,11 @@ const login = async (req, res) => {
             isAccountVerified: user.isAccountVerified || false
         };
         
-        return res.json({ success: true, userData: userData });
+        return res.json({ 
+            success: true, 
+            userData: userData,
+            token: token
+        });
 
     } catch (e) {
         console.error('❌ Login error:', e.message);
@@ -207,7 +209,6 @@ const verifyEmail = async (req, res) => {
 //////////////////// user is Authenticated & Get User Data /////////////////////////
 const isAuthenticated = async (req, res) => {
     try {
-        // Get full user data from database
         const user = await userModel.findById(req.user.id).select('-password');
         if (!user) {
             return res.status(401).json({ success: false, message: 'User not found' });
