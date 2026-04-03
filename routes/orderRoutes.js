@@ -3,36 +3,49 @@ const router = express.Router();
 const { userAuth } = require('../Middleware/userAuth');
 const { userModel } = require('../Model/userModel');
 
+// Test endpoint to verify authentication
+router.get('/test-user', userAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        console.log('Test endpoint called by user:', userId);
+        
+        const user = await userModel.findById(userId);
+        
+        res.json({
+            success: true,
+            message: 'Authentication working',
+            userId: userId,
+            userEmail: user?.email,
+            userBalance: user?.currentBalance
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Place order endpoint
 router.post('/place-order', userAuth, async (req, res) => {
     try {
         const userId = req.user.id;
+        console.log('=== PLACE ORDER ===');
+        console.log('User ID from token:', userId);
+        
         const { symbol, companyName, quantity, orderType, price, total } = req.body;
+        console.log('Order details:', { symbol, quantity, price, total });
 
-        // Validate input
-        if (!symbol || !quantity || !price || !total) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Missing required fields' 
-            });
-        }
-
-        // Validate quantity
-        if (quantity <= 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Quantity must be greater than 0' 
-            });
-        }
-
-        // Find user
+        // Find user by ID from token
         const user = await userModel.findById(userId);
+        
         if (!user) {
+            console.log('❌ User NOT found with ID:', userId);
             return res.status(404).json({ 
                 success: false, 
-                message: 'User not found' 
+                message: `User not found with ID: ${userId}` 
             });
         }
+
+        console.log('✅ User found:', user.email);
+        console.log('Current balance before order:', user.currentBalance);
 
         // Check if user has sufficient balance
         if (user.currentBalance < total) {
@@ -54,14 +67,23 @@ router.post('/place-order', userAuth, async (req, res) => {
             sellingPrice: null
         };
 
+        // Initialize stockTransactions array if it doesn't exist
+        if (!user.stockTransactions) {
+            user.stockTransactions = [];
+        }
+
         // Add transaction to user's stockTransactions array
         user.stockTransactions.push(stockTransaction);
+        console.log('Transaction added. Total transactions now:', user.stockTransactions.length);
         
         // Deduct from current balance
         user.currentBalance -= total;
 
         // Save to database
         await user.save();
+        
+        console.log('✅ Order saved successfully for user:', user.email);
+        console.log('New balance:', user.currentBalance);
 
         res.status(200).json({
             success: true,
@@ -74,7 +96,7 @@ router.post('/place-order', userAuth, async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error placing order:', error);
+        console.error('❌ Error placing order:', error);
         res.status(500).json({ 
             success: false, 
             message: 'Server error', 
@@ -83,52 +105,12 @@ router.post('/place-order', userAuth, async (req, res) => {
     }
 });
 
-// Get user's portfolio (all stocks and balance)
-router.get('/portfolio', userAuth, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const user = await userModel.findById(userId);
-        
-        if (!user) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'User not found' 
-            });
-        }
-
-        // Separate active holdings (not sold) and completed transactions
-        const activeHoldings = user.stockTransactions.filter(
-            transaction => transaction.sellingDate === null
-        );
-        
-        const completedTransactions = user.stockTransactions.filter(
-            transaction => transaction.sellingDate !== null
-        );
-
-        res.status(200).json({
-            success: true,
-            data: {
-                currentBalance: user.currentBalance,
-                activeHoldings: activeHoldings,
-                completedTransactions: completedTransactions,
-                totalTransactions: user.stockTransactions.length
-            }
-        });
-
-    } catch (error) {
-        console.error('Error fetching portfolio:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error' 
-        });
-    }
-});
-
-// Get user's holdings (grouped by stock with totals) - ADD THIS NEW ENDPOINT
+// Get user's holdings (grouped by stock with totals)
 router.get('/holdings', userAuth, async (req, res) => {
     try {
         const userId = req.user.id;
-        console.log('Fetching holdings for user:', userId);
+        console.log('=== FETCHING HOLDINGS ===');
+        console.log('User ID:', userId);
         
         const user = await userModel.findById(userId);
         
@@ -140,10 +122,12 @@ router.get('/holdings', userAuth, async (req, res) => {
             });
         }
 
-        console.log('Total transactions found:', user.stockTransactions.length);
+        console.log('User found:', user.email);
+        console.log('Current balance:', user.currentBalance);
+        console.log('Total transactions found:', user.stockTransactions?.length || 0);
 
         // Filter only active holdings (not sold)
-        const activeHoldings = user.stockTransactions.filter(
+        const activeHoldings = (user.stockTransactions || []).filter(
             transaction => transaction.sellingDate === null
         );
 
@@ -162,16 +146,14 @@ router.get('/holdings', userAuth, async (req, res) => {
                     stockName: stockName,
                     quantity: totalQuantity,
                     totalCost: totalCost,
-                    avgPrice: totalCost / totalQuantity,
-                    transactions: [...existing.transactions, transaction]
+                    avgPrice: totalCost / totalQuantity
                 });
             } else {
                 holdingsMap.set(stockName, {
                     stockName: stockName,
                     quantity: transaction.buyingQuantity,
                     totalCost: transaction.buyingPrice * transaction.buyingQuantity,
-                    avgPrice: transaction.buyingPrice,
-                    transactions: [transaction]
+                    avgPrice: transaction.buyingPrice
                 });
             }
         });
@@ -197,64 +179,13 @@ router.get('/holdings', userAuth, async (req, res) => {
     }
 });
 
-// Get specific stock details
-router.get('/stock/:symbol', userAuth, async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const { symbol } = req.params;
-        
-        const user = await userModel.findById(userId);
-        
-        if (!user) {
-            return res.status(404).json({ 
-                success: false, 
-                message: 'User not found' 
-            });
-        }
-
-        // Find all transactions for specific stock
-        const stockTransactions = user.stockTransactions.filter(
-            transaction => transaction.stockName === symbol
-        );
-
-        // Calculate total holdings for this stock (active only)
-        const activeHoldings = stockTransactions.filter(
-            transaction => transaction.sellingDate === null
-        );
-        
-        const totalQuantity = activeHoldings.reduce(
-            (sum, holding) => sum + holding.buyingQuantity, 0
-        );
-        
-        const totalInvestment = activeHoldings.reduce(
-            (sum, holding) => sum + (holding.buyingPrice * holding.buyingQuantity), 0
-        );
-
-        res.status(200).json({
-            success: true,
-            data: {
-                symbol,
-                transactions: stockTransactions,
-                activeHoldings: activeHoldings,
-                totalQuantity,
-                totalInvestment,
-                averageBuyPrice: totalQuantity > 0 ? totalInvestment / totalQuantity : 0
-            }
-        });
-
-    } catch (error) {
-        console.error('Error fetching stock details:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error' 
-        });
-    }
-});
-
 // Sell stock endpoint
 router.post('/sell-stock', userAuth, async (req, res) => {
     try {
         const userId = req.user.id;
+        console.log('=== SELL STOCK ===');
+        console.log('User ID:', userId);
+        
         const { transactionId, sellingPrice, quantity } = req.body;
 
         if (!transactionId || !sellingPrice || !quantity) {
@@ -272,6 +203,8 @@ router.post('/sell-stock', userAuth, async (req, res) => {
                 message: 'User not found' 
             });
         }
+
+        console.log('User found:', user.email);
 
         // Find the transaction
         const transaction = user.stockTransactions.id(transactionId);
@@ -299,7 +232,6 @@ router.post('/sell-stock', userAuth, async (req, res) => {
             });
         }
 
-        
         const totalSellingAmount = sellingPrice * quantity;
         
         // Update transaction
@@ -310,10 +242,12 @@ router.post('/sell-stock', userAuth, async (req, res) => {
         user.currentBalance += totalSellingAmount;
         
         // Calculate profit/loss
-        const totalBuyingAmount = transaction.buyingPrice * transaction.buyingQuantity;
+        const totalBuyingAmount = transaction.buyingPrice * quantity;
         const profitLoss = totalSellingAmount - totalBuyingAmount;
 
         await user.save();
+
+        console.log('Stock sold successfully. New balance:', user.currentBalance);
 
         res.status(200).json({
             success: true,

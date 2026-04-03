@@ -6,6 +6,9 @@ const transporter = require('../Config/Nodemailer');
 /////////// register function/////////////
 const register = async (req, res) => {
     const { name, email, password } = req.body;
+    console.log('=== REGISTER DEBUG ===');
+    console.log('Name:', name, 'Email:', email);
+    
     if (!name || !password || !email) {
         return res.json({ success: false, message: 'Missing details' });
     }
@@ -14,11 +17,18 @@ const register = async (req, res) => {
         if (existingUser) {
             return res.json({ success: false, message: 'User Already Exists' });
         }
+        
         const hashedPassword = await bcrypt.hash(password, 10);
-        const user = new userModel({ name, email, password: hashedPassword, balance: 100000 });
+        const user = new userModel({ 
+            name, 
+            email, 
+            password: hashedPassword, 
+            currentBalance: 100000  // Make sure this field exists
+        });
         await user.save();
 
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, { expiresIn: '7d' });
+        console.log('New user created with ID:', user._id);
 
         const isProduction = process.env.NODE_ENV === 'production';
         
@@ -31,28 +41,11 @@ const register = async (req, res) => {
             domain: isProduction ? '.onrender.com' : undefined
         });
 
-        console.log('✅ Registration - Cookie set with:', {
-            secure: true,
-            sameSite: 'none',
-            domain: isProduction ? '.onrender.com' : 'localhost',
-            environment: process.env.NODE_ENV
-        });
-
-        // SENDING WELCOME EMAIL
-        const mailOptions = {
-            from: process.env.SENDER_EMAIL,
-            to: email,
-            subject: 'Welcome to TradeX',
-            text: `Welcome to TradeX website, Your Account has been created with email id: ${email}`
-        };
-
-        await transporter.sendMail(mailOptions);
-
         const userData = {
             _id: user._id,
             name: user.name,
             email: user.email,
-            balance: user.balance || 0,
+            balance: user.currentBalance || 0,
             isAccountVerified: user.isAccountVerified || false
         };
 
@@ -71,6 +64,9 @@ const register = async (req, res) => {
 /////////////////Login function/////////////
 const login = async (req, res) => {
     const { email, password } = req.body;
+    console.log('=== LOGIN DEBUG ===');
+    console.log('Login attempt for email:', email);
+    
     if (!password || !email) {
         return res.json({ success: false, message: 'Email and Password are required' });
     }
@@ -80,12 +76,15 @@ const login = async (req, res) => {
             return res.json({ success: false, message: 'Invalid Email' });
         }
 
+        console.log('User found:', user._id, user.email);
+
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.json({ success: false, message: 'Invalid email id or password' });
         }
         
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET_KEY, { expiresIn: '7d' });
+        console.log('Token created for user ID:', user._id);
 
         const isProduction = process.env.NODE_ENV === 'production';
         
@@ -98,19 +97,11 @@ const login = async (req, res) => {
             domain: isProduction ? '.onrender.com' : undefined
         });
         
-        console.log('✅ Login successful for:', email);
-        console.log('🍪 Cookie set with:', {
-            secure: true,
-            sameSite: 'none',
-            domain: isProduction ? '.onrender.com' : 'localhost',
-            environment: process.env.NODE_ENV
-        });
-        
         const userData = {
             _id: user._id,
             name: user.name,
             email: user.email,
-            balance: user.balance || 0,
+            balance: user.currentBalance || 0,
             isAccountVerified: user.isAccountVerified || false
         };
         
@@ -218,7 +209,7 @@ const isAuthenticated = async (req, res) => {
             _id: user._id,
             name: user.name,
             email: user.email,
-            balance: user.balance || 0,
+            balance: user.currentBalance || 0,
             isAccountVerified: user.isAccountVerified || false
         };
         
